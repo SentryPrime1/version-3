@@ -7,8 +7,17 @@ import { Alert, AlertDescription } from '@/components/ui/alert.jsx'
 import { Loader2, Globe, User, CheckCircle, Clock } from 'lucide-react'
 import './App.css'
 
-// Use environment variable for API URL, fallback to localhost for development
+// Debug environment variables
+console.log('=== ENVIRONMENT DEBUG ===');
+console.log('import.meta.env.VITE_API_URL:', import.meta.env.VITE_API_URL);
+console.log('import.meta.env.MODE:', import.meta.env.MODE);
+console.log('import.meta.env.PROD:', import.meta.env.PROD);
+console.log('All env vars:', import.meta.env);
+
+// Use environment variable for API URL with proper fallback
 const API_URL = import.meta.env.VITE_API_URL || 'https://backend-production-e7fe.up.railway.app';
+console.log('Final API_URL being used:', API_URL );
+console.log('=== END DEBUG ===');
 
 function App() {
   const [scans, setScans] = useState([])
@@ -26,10 +35,14 @@ function App() {
 
   const fetchScans = async () => {
     try {
+      console.log('Fetching scans from:', `${API_URL}/scans`);
       const response = await fetch(`${API_URL}/scans`)
       if (response.ok) {
         const data = await response.json()
+        console.log('Scans fetched successfully:', data);
         setScans(data)
+      } else {
+        console.error('Failed to fetch scans, status:', response.status);
       }
     } catch (err) {
       console.error('Failed to fetch scans:', err)
@@ -42,6 +55,9 @@ function App() {
     setError('')
 
     try {
+      console.log('Creating scan with data:', formData);
+      console.log('POST URL:', `${API_URL}/scans`);
+      
       const response = await fetch(`${API_URL}/scans`, {
         method: 'POST',
         headers: {
@@ -52,13 +68,16 @@ function App() {
 
       if (response.ok) {
         const newScan = await response.json()
+        console.log('Scan created successfully:', newScan);
         setScans(prev => [...prev, newScan.data])
         setFormData({ url: '', userId: '' })
       } else {
         const errorData = await response.json()
+        console.error('Failed to create scan:', errorData);
         setError(errorData.message.join(', ') || 'Failed to create scan')
       }
     } catch (err) {
+      console.error('Network error creating scan:', err);
       setError('Network error: ' + err.message)
     } finally {
       setLoading(false)
@@ -79,6 +98,7 @@ function App() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">SentryPrime v2</h1>
           <p className="text-lg text-gray-600">Enterprise-grade Accessibility Scanning Platform</p>
+          <p className="text-sm text-gray-500 mt-2">API: {API_URL}</p>
         </div>
 
         {/* Create Scan Form */}
@@ -130,7 +150,7 @@ function App() {
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
-              )}
+               )}
 
               <Button type="submit" disabled={loading} className="w-full">
                 {loading ? (

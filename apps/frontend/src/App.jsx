@@ -8,7 +8,7 @@ import { Loader2, Globe, User, CheckCircle, Clock } from 'lucide-react'
 import './App.css'
 
 // Use environment variable for API URL, fallback to localhost for development
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || 'https://backend-production-e7fe.up.railway.app';
 
 function App() {
   const [scans, setScans] = useState([])

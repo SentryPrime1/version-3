@@ -1,0 +1,81 @@
+{
+  "name": "sentryprime-backend-v2",
+  "version": "2.0.0",
+  "description": "SentryPrime Accessibility Scanner Backend with Alt Text AI",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node -r dotenv/config src/server.js",
+    "start:prod": "NODE_ENV=production node -r dotenv/config src/server.js",
+    "dev": "nodemon -r dotenv/config src/server.js",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "build": "echo 'No build step required for Node.js backend'",
+    "health": "curl -f http://localhost:5000/api/alt-text/health || exit 1",
+    "metrics": "curl -s http://localhost:5000/api/alt-text/metrics"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4",
+    "express-rate-limit": "^7.1.5",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "uuid": "^9.0.1",
+    "openai": "^4.20.1",
+    "sharp": "^0.32.6",
+    "ipaddr.js": "^2.1.0",
+    "p-limit": "^4.0.0",
+    "pino": "^8.16.2",
+    "pino-http": "^8.5.1",
+    "prom-client": "^15.1.0",
+    "dotenv": "^16.3.1",
+    "cssesc": "^3.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0",
+    "eslint": "^8.55.0",
+    "supertest": "^6.3.3",
+    "pino-pretty": "^10.2.3"
+  },
+  "engines": {
+    "node": ">=18.16.0"
+  },
+  "keywords": [
+    "accessibility",
+    "scanner",
+    "wcag",
+    "ai",
+    "alt-text",
+    "automation",
+    "enterprise",
+    "security"
+  ],
+  "author": "SentryPrime Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sentryprime/backend-v2.git"
+  },
+  "jest": {
+    "preset": "default",
+    "extensionsToTreatAsEsm": [".js"],
+    "globals": {
+      "ts-jest": {
+        "useESM": true
+      }
+    },
+    "testEnvironment": "node",
+    "transform": {}
+  },
+  "nodemonConfig": {
+    "watch": ["src/"],
+    "ext": "js,json",
+    "ignore": ["src/**/*.test.js"],
+    "exec": "node -r dotenv/config src/server.js"
+  }
+}
+

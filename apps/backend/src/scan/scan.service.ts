@@ -1,22 +1,48 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ScanDto } from '@common';
+import { Scan } from '../entities/scan.entity';
 
 @Injectable()
 export class ScanService {
+  constructor(
+    @InjectRepository(Scan)
+    private scanRepository: Repository<Scan>,
+  ) {}
+
   async createScan(scanDto: ScanDto) {
-    // For now, just return the scan data without queue processing
     console.log('Creating scan:', scanDto);
+    
+    const scan = this.scanRepository.create({
+      url: scanDto.url,
+      userId: scanDto.userId,
+      status: 'pending',
+    });
+
+    const savedScan = await this.scanRepository.save(scan);
+    
     return { 
       message: 'Scan created successfully', 
-      data: scanDto,
-      id: Math.random().toString(36).substr(2, 9)
+      data: savedScan,
+      id: savedScan.id
     };
   }
 
-  getAllScans() {
-    return [
-      { id: '1', url: 'https://example.com', userId: 'user1', status: 'completed' },
-      { id: '2', url: 'https://test.com', userId: 'user2', status: 'pending' }
-    ];
+  async getAllScans(): Promise<Scan[]> {
+    return await this.scanRepository.find({
+      order: {
+        createdAt: 'DESC'
+      }
+    });
+  }
+
+  async getScanById(id: string): Promise<Scan> {
+    return await this.scanRepository.findOne({ where: { id } });
+  }
+
+  async updateScanStatus(id: string, status: 'pending' | 'completed' | 'failed', results?: any): Promise<Scan> {
+    await this.scanRepository.update(id, { status, results });
+    return await this.getScanById(id);
   }
 }

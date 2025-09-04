@@ -2,14 +2,8 @@ FROM node:20
 
 WORKDIR /app
 
-# Copy workspace configuration files first
-COPY ../../pnpm-workspace.yaml ./
-COPY ../../package.json ./
-COPY ../../pnpm-lock.yaml ./
-
-# Copy all packages and apps
-COPY ../../packages ./packages
-COPY ../../apps ./apps
+# Copy the entire monorepo
+COPY . .
 
 # Install pnpm globally
 RUN npm install -g pnpm

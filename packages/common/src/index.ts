@@ -1,2 +1,2 @@
-export * from './dtos/Scan.dto';
+export * from "./dtos/Scan.dto";
 

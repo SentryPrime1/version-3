@@ -42,3 +42,7 @@ COPY --from=builder /out ./
 
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
+
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+

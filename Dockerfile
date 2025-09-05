@@ -21,7 +21,7 @@ RUN pnpm fetch
 COPY . .
 
 # 4) Install from the fetched store (no network), workspace-wide
-RUN pnpm -w install --offline
+RUN pnpm -w install
 
 # 5) Build shared and backend
 RUN pnpm -w --filter @common build && pnpm -w --filter backend build

@@ -17,7 +17,7 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/common/package.json packages/common/package.json
 RUN pnpm fetch
-RUN pnpm install -r --prod
+RUN pnpm install -r
 
 # -----
 # Build
@@ -36,6 +36,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/apps/backend/dist /app/dist
 COPY --from=deps /app/node_modules /app/node_modules
+RUN pnpm prune --prod
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
 

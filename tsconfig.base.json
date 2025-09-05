@@ -11,6 +11,8 @@
     "declaration": true,
     "outDir": "dist",
     "baseUrl": ".",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "paths": {
       "@common/*": ["packages/common/src/*"]
     }

@@ -21,7 +21,7 @@ RUN pnpm fetch
 COPY . .
 
 # 4) Install from the fetched store (no network), workspace-wide
-RUN pnpm -w installld shared and backend
+RUN pnpm -w install
 RUN pnpm -w --filter @common build && pnpm -w --filter backend build
 
 # Optional: produce a minimal deployable app tree for backend

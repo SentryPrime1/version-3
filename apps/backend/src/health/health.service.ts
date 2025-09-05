@@ -52,7 +52,7 @@ export class HealthService {
       return {
         status: 'error',
         message: 'Database connection failed',
-        error: error.message,
+        error: (error as Error).message,
         timestamp: new Date().toISOString()
       };
     }

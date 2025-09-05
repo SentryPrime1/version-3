@@ -37,11 +37,11 @@ export class ScanService {
     });
   }
 
-  async getScanById(id: string): Promise<Scan> {
+  async getScanById(id: string): Promise<Scan | null> {
     return await this.scanRepository.findOne({ where: { id } });
   }
 
-  async updateScanStatus(id: string, status: 'pending' | 'completed' | 'failed', results?: any): Promise<Scan> {
+  async updateScanStatus(id: string, status: 'pending' | 'completed' | 'failed', results?: any): Promise<Scan | null> {
     await this.scanRepository.update(id, { status, results });
     return await this.getScanById(id);
   }

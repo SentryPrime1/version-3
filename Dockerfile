@@ -3,7 +3,7 @@
 ########## BASE ##########
 FROM node:22-slim AS base
 ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
+ENV PATH=$PNMP_HOME:$PATH
 RUN corepack enable && corepack prepare pnpm@10.4.1 --activate
 WORKDIR /app
 
@@ -29,8 +29,8 @@ COPY . .
 COPY --from=deps /app/node_modules /app/node_modules
 # build shared + backend
 RUN pnpm -r --filter @common build && pnpm -r --filter backend build
-# produce a production-only bundle for backend into /out (code + prod node_modules)
-RUN pnpm -w --filter backend deploy --prod /out
+# produce a production-only bundle for backend into /out (Chat's fix)
+RUN pnpm -C apps/backend deploy --prod /out
 
 ########## RUNNER ##########
 FROM node:22-slim AS runner

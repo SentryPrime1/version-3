@@ -1,48 +1,61 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ScanDto } from '@common';
 import { Scan } from '../entities/scan.entity';
+import { ScanDto } from '@common';
 
 @Injectable()
 export class ScanService {
+  private readonly logger = new Logger(ScanService.name);
+
   constructor(
     @InjectRepository(Scan)
     private scanRepository: Repository<Scan>,
   ) {}
 
-  async createScan(scanDto: ScanDto) {
-    console.log('Creating scan:', scanDto);
+  async createScan(scanDto: ScanDto): Promise<Scan> {
+    this.logger.log(`Creating scan for ${scanDto.url}`);
     
     const scan = this.scanRepository.create({
       url: scanDto.url,
-      userId: scanDto.userId,
       status: 'pending',
+      createdAt: new Date(),
     });
-
-    const savedScan = await this.scanRepository.save(scan);
     
-    return { 
-      message: 'Scan created successfully', 
-      data: savedScan,
-      id: savedScan.id
-    };
+    return this.scanRepository.save(scan);
   }
 
   async getAllScans(): Promise<Scan[]> {
-    return await this.scanRepository.find({
-      order: {
-        createdAt: 'DESC'
-      }
+    return this.scanRepository.find({
+      order: { createdAt: 'DESC' },
     });
   }
 
-  async getScanById(id: string): Promise<Scan | null> {
-    return await this.scanRepository.findOne({ where: { id } });
+  async getScanById(id: string): Promise<Scan> {
+    const scan = await this.scanRepository.findOne({ where: { id } });
+    if (!scan) {
+      throw new NotFoundException(`Scan with ID ${id} not found`);
+    }
+    return scan;
   }
 
-  async updateScanStatus(id: string, status: 'pending' | 'completed' | 'failed', results?: any): Promise<Scan | null> {
-    await this.scanRepository.update(id, { status, results });
-    return await this.getScanById(id);
+  async updateScanStatus(id: string, status: string): Promise<Scan> {
+    const scan = await this.scanRepository.findOne({ where: { id } });
+    if (!scan) {
+      throw new NotFoundException(`Scan with ID ${id} not found`);
+    }
+    
+    scan.status = status;
+    scan.updatedAt = new Date();
+    
+    return this.scanRepository.save(scan);
+  }
+
+  async deleteScan(id: string): Promise<void> {
+    const result = await this.scanRepository.delete(id);
+    if (result.affected === 0) {
+      throw new NotFoundException(`Scan with ID ${id} not found`);
+    }
   }
 }
+

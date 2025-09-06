@@ -1,0 +1,15 @@
+node_modules
+dist
+build
+coverage
+.env
+.env.*
+.next
+out
+.vscode
+.DS_Store
+*.log
+.nyc_output
+.cache
+.parcel-cache
+.turbo

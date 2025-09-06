@@ -1,24 +1,23 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
   
-  // Enable CORS for frontend communication
-  app.enableCors();
-  
-  // Enable global validation
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }));
-  
   const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
+  
+  // Configure CORS with environment-based origins
+  const origins = (process.env.CORS_ORIGINS || '').split(',').filter(Boolean);
+  app.enableCors(origins.length ? { origin: origins } : {});
+  
+  // Bind to all interfaces for Railway deployment
+  await app.listen(Number(port), '0.0.0.0');
+  
+  logger.log(`Application is running on: http://0.0.0.0:${port}`);
 }
+
 bootstrap();
 

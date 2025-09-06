@@ -20,6 +20,38 @@ export class HealthService {
     };
   }
 
+  async getBasicHealth() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      service: 'SentryPrime Backend',
+      version: '1.0.0',
+    };
+  }
+
+  async getDatabaseHealth() {
+    try {
+      // Test database connectivity
+      const scanCount = await this.scanRepository.count();
+      
+      return {
+        status: 'connected',
+        timestamp: new Date().toISOString(),
+        scanCount,
+        connection: 'active',
+      };
+    } catch (error) {
+      this.logger.error('Database health check failed', (error as Error).stack);
+      return {
+        status: 'disconnected',
+        timestamp: new Date().toISOString(),
+        error: (error as Error).message,
+        connection: 'failed',
+      };
+    }
+  }
+
   async getDetailedHealth() {
     try {
       // Test database connectivity
@@ -50,4 +82,3 @@ export class HealthService {
     }
   }
 }
-

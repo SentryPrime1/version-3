@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { Scan } from '../entities/scan.entity';
 import { ScanDto } from '@common';
 
+type ScanStatus = 'pending' | 'completed' | 'failed';
+
 @Injectable()
 export class ScanService {
   private readonly logger = new Logger(ScanService.name);
@@ -18,7 +20,7 @@ export class ScanService {
     
     const scan = this.scanRepository.create({
       url: scanDto.url,
-      status: 'pending',
+      status: 'pending' as ScanStatus,
       createdAt: new Date(),
     });
     
@@ -39,10 +41,16 @@ export class ScanService {
     return scan;
   }
 
-  async updateScanStatus(id: string, status: string): Promise<Scan> {
+  async updateScanStatus(id: string, status: ScanStatus): Promise<Scan> {
     const scan = await this.scanRepository.findOne({ where: { id } });
     if (!scan) {
       throw new NotFoundException(`Scan with ID ${id} not found`);
+    }
+    
+    // Ensure status is properly typed
+    const validStatuses: ScanStatus[] = ['pending', 'completed', 'failed'];
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
     }
     
     scan.status = status;
@@ -58,4 +66,3 @@ export class ScanService {
     }
   }
 }
-

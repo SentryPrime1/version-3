@@ -9,36 +9,29 @@ RUN corepack enable && corepack prepare pnpm@10.4.1 --activate
 
 ########## DEPS (install ALL workspace deps once) ##########
 FROM base AS deps
-# Copy manifests for better caching
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# copy only manifests for deterministic caching
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/common/package.json packages/common/package.json
-# Optional: approve postinstall scripts pnpm v10 warns about
-RUN pnpm -w approve-builds @nestjs/core esbuild @tailwindcss/oxide
-# Install all deps (dev+prod) recursively so we can build everything
 RUN pnpm install -r
 
 ########## BUILD ##########
 FROM base AS build
 COPY . .
-# reuse node_modules from deps
+# reuse the fully-installed workspace from deps
 COPY --from=deps /app/node_modules /app/node_modules
 # build shared first, then backend
-RUN pnpm -r --filter @common build && pnpm -r --filter backend build
+RUN pnpm -r --filter @common build && pnpm -C apps/backend build
 
-########## RUNNER (use the SAME node_modules we built with) ##########
+########## RUNNER ##########
 FROM node:22-slim AS runner
 ENV NODE_ENV=production
-WORKDIR /app/apps/backend
+WORKDIR /app
 
-# non-root (optional)
-RUN useradd -m appuser
-USER appuser
-
-# copy compiled backend
-COPY --from=build /app/apps/backend/dist ./dist
-# copy the full workspace node_modules (contains reflect-metadata)
-COPY --from=deps /app/node_modules ./node_modules
+# We keep it simple & reliable: bring the **root** node_modules
+COPY --from=deps  /app/node_modules           /app/node_modules
+# Copy compiled backend output to /app/dist
+COPY --from=build /app/apps/backend/dist      /app/dist
 
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

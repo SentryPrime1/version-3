@@ -14,9 +14,10 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/common/package.json packages/common/package.json
-# (Optional) prefetch + approve scripts for pnpm v10
+# Prefetch dependencies
 RUN pnpm fetch
-RUN pnpm -w approve-builds --all
+# Approve specific build scripts
+RUN pnpm -w approve-builds @nestjs/core esbuild @tailwindcss/oxide
 # Install all deps (incl dev) so we can build
 RUN pnpm install -r
 

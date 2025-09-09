@@ -3,7 +3,7 @@ FROM node:22-slim AS base
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.4.1 --activate
 
-# Install all dependencies
+# Install all dependencies (including reflect-metadata)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/common/package.json packages/common/package.json
 COPY apps/backend/package.json apps/backend/package.json
@@ -13,21 +13,15 @@ RUN pnpm install -r
 COPY . .
 RUN pnpm -r --filter @common build && pnpm -r --filter backend build
 
-# Production stage with explicit reflect-metadata
+# Create production runtime - single stage to avoid conflicts
 FROM node:22-slim AS runner
 WORKDIR /app
-RUN useradd -m appuser && corepack enable && corepack prepare pnpm@10.4.1 --activate
+RUN useradd -m appuser
 
-# Copy package files for production install
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/common/package.json packages/common/package.json
-COPY apps/backend/package.json apps/backend/package.json
-
-# Install production dependencies with explicit reflect-metadata
-RUN pnpm install -r --prod && pnpm add -w reflect-metadata
-
-# Copy built application
+# Copy built application and ALL node_modules (includes reflect-metadata)
 COPY --from=base /app/apps/backend/dist ./dist
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/apps/backend/node_modules ./apps/backend/node_modules
 
 USER appuser
 EXPOSE 3000

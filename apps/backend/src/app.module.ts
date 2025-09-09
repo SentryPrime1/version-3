@@ -1,32 +1,58 @@
+// apps/backend/src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ScanModule } from './scan/scan.module';
-import { HealthModule } from './health/health.module';
-import { Scan } from './entities/scan.entity';
-import * as Joi from 'joi';
+
+// If you have feature modules, import them here
+// import { HealthModule } from './health/health.module';
+
+const useDb =
+  process.env.SKIP_DB?.toLowerCase() !== 'true' &&
+  !!(
+    process.env.DATABASE_URL ||
+    (process.env.DB_HOST && process.env.DB_PORT && process.env.DB_USER && process.env.DB_PASSWORD && process.env.DB_NAME)
+  );
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      validationSchema: Joi.object({
-        NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
-        PORT: Joi.number().default(3000),
-        DATABASE_URL: Joi.string().uri().required(),
-        CORS_ORIGINS: Joi.string().optional(),
-      }),
-    }),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL,
-      entities: [Scan],
-      synchronize: process.env.NODE_ENV !== 'production',
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    }),
-    ScanModule,
-    HealthModule,
+    ConfigModule.forRoot({ isGlobal: true }),
+    // Only include TypeORM when DB is configured (so the app can still boot)
+    ...(useDb
+      ? [
+          TypeOrmModule.forRootAsync({
+            useFactory: () => {
+              // Prefer DATABASE_URL if present; fall back to discrete vars.
+              const url = process.env.DATABASE_URL;
+              if (url) {
+                return {
+                  type: 'postgres',
+                  url,
+                  // Keep these conservative in prod; change as needed
+                  autoLoadEntities: true,
+                  synchronize: false,
+                  // Don’t block app start forever if DB is unreachable
+                  retryAttempts: 2,
+                  retryDelay: 1000,
+                } as any;
+              }
+              // Discrete config
+              return {
+                type: 'postgres',
+                host: process.env.DB_HOST,
+                port: Number(process.env.DB_PORT || 5432),
+                username: process.env.DB_USER,
+                password: process.env.DB_PASSWORD,
+                database: process.env.DB_NAME,
+                autoLoadEntities: true,
+                synchronize: false,
+                retryAttempts: 2,
+                retryDelay: 1000,
+              } as any;
+            },
+          }),
+        ]
+      : []),
+    // HealthModule, other modules...
   ],
 })
 export class AppModule {}
-

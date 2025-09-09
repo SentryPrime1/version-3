@@ -1,22 +1,20 @@
+// apps/backend/src/health/health.controller.ts
 import { Controller, Get } from '@nestjs/common';
 import { HealthService } from './health.service';
 
-@Controller('health')
+@Controller('health') // retains /health
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
+  // For humans/tools
   @Get()
-  async getHealth() {
-    return await this.healthService.getBasicHealth();
+  getHealth() {
+    return this.healthService.getHealth();
   }
 
-  @Get('detailed')
-  async getDetailedHealth() {
-    return await this.healthService.getDetailedHealth();
-  }
-
-  @Get('db')
-  async getDatabaseHealth() {
-    return await this.healthService.getDatabaseHealth();
+  // For platform liveness probe (/healthz)
+  @Get('z')
+  getHealthZ() {
+    return this.healthService.getHealth();
   }
 }

@@ -1,48 +1,55 @@
+// apps/backend/src/main.ts
 import 'reflect-metadata';
+import * as http from 'http';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import * as http from 'http';
+import { Logger } from '@nestjs/common';
 
-async function bootstrap() {
-  const port = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 3000);
 
-  // Bind a tiny fallback server immediately so /healthz succeeds during boot.
-  const fallback = http.createServer((req, res) => {
+/**
+ * Tiny always-on liveness server so Railway's healthcheck (/healthz) never flakes.
+ * Returns 200 OK immediately, even while Nest is still booting.
+ */
+function startLivenessServer() {
+  const server = http.createServer((req, res) => {
     if (req.url === '/healthz') {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, fallback: true }));
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
-    res.writeHead(200, { 'content-type': 'text/plain' });
-    res.end('ok');
+    // Fallback for other requests while Nest is booting
+    res.statusCode = 503;
+    res.end('Service Unavailable');
   });
 
-  await new Promise<void>((resolve) => fallback.listen(port, '0.0.0.0', () => resolve(null as any)));
+  server.listen(PORT, '0.0.0.0', () => {
+    // eslint-disable-next-line no-console
+    console.log(`[liveness] listening on 0.0.0.0:${PORT} (serving /healthz 200)`);
+  });
 
-  // eslint-disable-next-line no-console
-  console.log(`[startup] fallback health server on 0.0.0.0:${port}`);
+  return server;
+}
+
+async function bootstrap() {
+  const logger = new Logger('Bootstrap');
+  const live = startLivenessServer();
 
   try {
-    const app = await NestFactory.create(AppModule, {
-      logger: ['error', 'warn', 'log'],
-    });
+    const app = await NestFactory.create(AppModule, { logger: ['log', 'error', 'warn'] });
+    app.enableCors();
+    await app.listen(PORT, '0.0.0.0');
 
-    await app.listen(port, '0.0.0.0');
+    logger.log(`Nest started on http://0.0.0.0:${PORT}`);
 
-    // Close the fallback once Nest is listening
-    fallback.close();
-
-    // eslint-disable-next-line no-console
-    console.log(`[startup] Nest listening on 0.0.0.0:${port} (health: /healthz)`);
+    // Keep the liveness endpoint active even after Nest starts.
+    // (If you prefer Nest to handle /healthz, keep HealthController below.)
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[startup] failed starting Nest', err);
-    // keep the fallback server alive so healthcheck keeps passing and logs can be inspected
+    console.error('[bootstrap] failed to start Nest:', err);
+    // keep liveness server up so you can still reach logs, then crash so Railway restarts
+    setTimeout(() => process.exit(1), 2000);
   }
 }
 
-bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error('[startup] fatal before bootstrap', err);
-  process.exit(1);
-});
+bootstrap();

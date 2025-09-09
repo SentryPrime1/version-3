@@ -9,8 +9,8 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/common/package.json packages/common/package.json
 COPY apps/backend/package.json apps/backend/package.json
 RUN pnpm install -r --prod
-# Explicitly install reflect-metadata for production
-RUN pnpm add reflect-metadata
+# Explicitly install reflect-metadata for production with workspace flag
+RUN pnpm add -w reflect-metadata
 RUN pnpm -w approve-builds @nestjs/core esbuild @tailwindcss/oxide
 RUN pnpm fetch
 

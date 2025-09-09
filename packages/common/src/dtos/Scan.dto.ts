@@ -1,11 +1,52 @@
-import { IsString, IsUrl, IsNotEmpty } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsArray, IsBoolean } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ScanDto {
-  @IsUrl({}, { message: 'URL must be a valid URL' })
-  @IsNotEmpty({ message: 'URL is required' })
-  url!: string;
+  @IsString()
+  url: string;
 
-  @IsString({ message: 'User ID must be a string' })
-  @IsNotEmpty({ message: 'User ID is required' })
-  userId!: string;
+  @IsNumber()
+  @IsOptional()
+  id?: number;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsNumber()
+  @IsOptional()
+  compliance?: number;
+
+  @IsArray()
+  @IsOptional()
+  violations?: any[];
+
+  @IsBoolean()
+  @IsOptional()
+  completed?: boolean;
+}
+
+export class CreateScanDto {
+  @IsString()
+  url: string;
+
+  @IsNumber()
+  userId: number;
+}
+
+export class ScanResultDto {
+  @IsNumber()
+  id: number;
+
+  @IsString()
+  url: string;
+
+  @IsNumber()
+  compliance: number;
+
+  @IsArray()
+  violations: any[];
+
+  @IsString()
+  status: string;
 }

@@ -11,7 +11,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 COPY packages/common/package.json ./packages/common/
 
-# Install all dependencies (remove --frozen-lockfile to allow lockfile update)
+# Install all dependencies
 RUN pnpm install
 
 # Copy source code
@@ -32,10 +32,8 @@ WORKDIR /app
 # Copy built application
 COPY --from=base /app/apps/backend/dist ./dist
 
-# Copy ALL node_modules to ensure complete dependency availability
+# Copy node_modules (only the ones that exist)
 COPY --from=base /app/node_modules ./node_modules
-COPY --from=base /app/apps/backend/node_modules ./apps/backend/node_modules 2>/dev/null || true
-COPY --from=base /app/packages/common/node_modules ./packages/common/node_modules 2>/dev/null || true
 
 # Copy package.json for runtime reference
 COPY --from=base /app/apps/backend/package.json ./package.json

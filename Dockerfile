@@ -1,27 +1,51 @@
 # syntax=docker/dockerfile:1.7
 FROM node:22-slim AS base
-WORKDIR /app
+
+# Install pnpm
 RUN corepack enable && corepack prepare pnpm@10.4.1 --activate
 
-# Install all dependencies
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-COPY packages/common/package.json packages/common/package.json
-COPY apps/backend/package.json apps/backend/package.json
-RUN pnpm install -r
-
-# Copy source code and build
-COPY . .
-RUN pnpm -r --filter @common build && pnpm -r --filter backend build
-
-# Production runtime with ALL dependencies
-FROM node:22-slim AS runner
 WORKDIR /app
+
+# Copy package files for dependency installation
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/backend/package.json ./apps/backend/
+COPY packages/common/package.json ./packages/common/
+
+# Install all dependencies (including reflect-metadata)
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN pnpm -r --filter @common build
+RUN pnpm -r --filter backend build
+
+# Production stage
+FROM node:22-slim AS runner
+
+# Create app user for security
 RUN useradd -m appuser
 
-# Copy built application AND all node_modules
-COPY --from=base /app/apps/backend/dist ./dist
-COPY --from=base /app/node_modules ./node_modules
+WORKDIR /app
 
+# Copy built application
+COPY --from=base /app/apps/backend/dist ./dist
+
+# Copy ALL node_modules to ensure complete dependency availability
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/apps/backend/node_modules ./apps/backend/node_modules 2>/dev/null || true
+COPY --from=base /app/packages/common/node_modules ./packages/common/node_modules 2>/dev/null || true
+
+# Copy package.json for runtime reference
+COPY --from=base /app/apps/backend/package.json ./package.json
+
+# Set ownership
+RUN chown -R appuser:appuser /app
 USER appuser
+
+# Expose port
 EXPOSE 3000
+
+# Start the application
 CMD ["node", "dist/main.js"]

@@ -1,20 +1,18 @@
-// apps/backend/src/health/health.controller.ts
 import { Controller, Get } from '@nestjs/common';
 import { HealthService } from './health.service';
 
-@Controller('health') // retains /health
+@Controller('healthz') // <- Railway checks /healthz
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
-  // For humans/tools
   @Get()
-  getHealth() {
-    return this.healthService.getHealth();
-  }
-
-  // For platform liveness probe (/healthz)
-  @Get('z')
-  getHealthZ() {
-    return this.healthService.getHealth();
+  async getHealthz() {
+    // return 200 even if DB is down; include details in payload
+    const { ok, db } = await this.healthService.getHealth();
+    return {
+      status: ok ? 'ok' : 'degraded',
+      checks: { db },
+      timestamp: new Date().toISOString(),
+    };
   }
 }

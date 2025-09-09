@@ -11,8 +11,8 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/backend/package.json ./apps/backend/
 COPY packages/common/package.json ./packages/common/
 
-# Install all dependencies (including reflect-metadata)
-RUN pnpm install --frozen-lockfile
+# Install all dependencies (remove --frozen-lockfile to allow lockfile update)
+RUN pnpm install
 
 # Copy source code
 COPY . .

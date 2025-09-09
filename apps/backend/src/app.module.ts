@@ -1,13 +1,17 @@
-// apps/backend/src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HealthController } from './health.controller';
 
 const useDb =
   process.env.SKIP_DB?.toLowerCase() !== 'true' &&
   !!(
     process.env.DATABASE_URL ||
-    (process.env.DB_HOST && process.env.DB_PORT && process.env.DB_USER && process.env.DB_PASSWORD && process.env.DB_NAME)
+    (process.env.DB_HOST &&
+      process.env.DB_PORT &&
+      process.env.DB_USER &&
+      process.env.DB_PASSWORD &&
+      process.env.DB_NAME)
   );
 
 @Module({
@@ -44,5 +48,6 @@ const useDb =
         ]
       : []),
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

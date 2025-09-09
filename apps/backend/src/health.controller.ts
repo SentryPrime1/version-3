@@ -3,13 +3,11 @@ import { Controller, Get } from '@nestjs/common';
 
 @Controller()
 export class HealthController {
-  // Liveness: should not require DB
   @Get('healthz')
-  healthz() {
+  liveness() {
     return { ok: true };
   }
 
-  // Friendly root check
   @Get('health')
   health() {
     return { ok: true };

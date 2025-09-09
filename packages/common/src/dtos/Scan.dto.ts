@@ -3,7 +3,7 @@ import { Type } from 'class-transformer';
 
 export class ScanDto {
   @IsString()
-  url: string;
+  url!: string;
 
   @IsNumber()
   @IsOptional()
@@ -28,25 +28,25 @@ export class ScanDto {
 
 export class CreateScanDto {
   @IsString()
-  url: string;
+  url!: string;
 
   @IsNumber()
-  userId: number;
+  userId!: number;
 }
 
 export class ScanResultDto {
   @IsNumber()
-  id: number;
+  id!: number;
 
   @IsString()
-  url: string;
+  url!: string;
 
   @IsNumber()
-  compliance: number;
+  compliance!: number;
 
   @IsArray()
-  violations: any[];
+  violations!: any[];
 
   @IsString()
-  status: string;
+  status!: string;
 }

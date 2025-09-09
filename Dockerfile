@@ -13,17 +13,14 @@ RUN pnpm install -r
 COPY . .
 RUN pnpm -r --filter @common build && pnpm -r --filter backend build
 
-# Production runtime with explicit reflect-metadata installation
+# Production runtime with ALL dependencies
 FROM node:22-slim AS runner
 WORKDIR /app
-RUN useradd -m appuser && corepack enable && corepack prepare pnpm@10.4.1 --activate
+RUN useradd -m appuser
 
-# Initialize a clean package.json and install reflect-metadata directly
-RUN echo '{"name":"app","version":"1.0.0","dependencies":{"reflect-metadata":"^0.1.13"}}' > package.json
-RUN npm install reflect-metadata
-
-# Copy built application
+# Copy built application AND all node_modules
 COPY --from=base /app/apps/backend/dist ./dist
+COPY --from=base /app/node_modules ./node_modules
 
 USER appuser
 EXPOSE 3000

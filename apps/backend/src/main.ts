@@ -2,33 +2,26 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
-  const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, {
-    bufferLogs: true,
-  });
-
-  // CORS (optional)
-  const origins = (process.env.CORS_ORIGINS || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  app.enableCors(origins.length ? { origin: origins } : {});
-
-  // Lightweight liveness probe: must be fast and always 200
-  app.getHttpAdapter().get('/healthz', (_req, res) => {
-    res.status(200).send({ ok: true });
-  });
-
-  // (Optional) keep your deeper health at /health (DB etc.)
-  // app.getHttpAdapter().get('/health', (_req, res) => {
-  //   res.status(200).send({ status: 'ok' });
-  // });
-
   const port = Number(process.env.PORT || 3000);
+  const app = await NestFactory.create(AppModule, {
+    // quiet logs on boot; change to ['log','error','warn','debug','verbose'] if needed
+    logger: ['error', 'warn', 'log'],
+  });
+
+  // Minimal, fast healthcheck that never blocks startup
+  app.getHttpAdapter().get('/healthz', (_req, res) => {
+    res.status(200).json({ ok: true });
+  });
+
   await app.listen(port, '0.0.0.0');
-  logger.log(`HTTP server listening on http://0.0.0.0:${port}`);
+  // eslint-disable-next-line no-console
+  console.log(`[bootstrap] listening on 0.0.0.0:${port}, healthz ready`);
 }
-bootstrap();
+
+bootstrap().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('[bootstrap] failed to start app', err);
+  process.exit(1);
+});

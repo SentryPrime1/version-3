@@ -1,3 +1,5 @@
-// Export any shared DTOs, interfaces, or utilities here
+// Export DTOs
 export * from './dtos';
+
+// Export interfaces  
 export * from './interfaces';

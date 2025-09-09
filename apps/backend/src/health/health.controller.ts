@@ -1,18 +1,15 @@
+// apps/backend/src/health.controller.ts
 import { Controller, Get } from '@nestjs/common';
-import { HealthService } from './health.service';
 
-@Controller('healthz') // <- Railway checks /healthz
+@Controller()
 export class HealthController {
-  constructor(private readonly healthService: HealthService) {}
+  @Get('healthz')
+  liveness() {
+    return { ok: true };
+  }
 
-  @Get()
-  async getHealthz() {
-    // return 200 even if DB is down; include details in payload
-    const { ok, db } = await this.healthService.getHealth();
-    return {
-      status: ok ? 'ok' : 'degraded',
-      checks: { db },
-      timestamp: new Date().toISOString(),
-    };
+  @Get('health')
+  health() {
+    return { ok: true };
   }
 }

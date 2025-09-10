@@ -6,3 +6,7 @@ cmds = ["pnpm run build"]
 
 [start]
 cmd = "pnpm run start:prod"
+
+[variables]
+NIXPACKS_PNPM_FLAGS = "--no-frozen-lockfile"
+

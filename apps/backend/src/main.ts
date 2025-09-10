@@ -31,9 +31,12 @@ async function bootstrap() {
     
   } catch (err) {
     logger.error('❌ Failed to start NestJS application:', err);
-    logger.error('Stack trace:', err.stack);
+    if (err instanceof Error) {
+      logger.error('Stack trace:', err.stack);
+    }
     process.exit(1);
   }
 }
 
 bootstrap();
+

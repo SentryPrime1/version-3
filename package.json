@@ -15,7 +15,7 @@
     "packages/*"
   ],
   "devDependencies": {
-    "typescript": "^5.1.3"
+    "typescript": "^5.0.0"
   }
 }
 

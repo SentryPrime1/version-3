@@ -130,7 +130,8 @@ export class AccessibilityScannerService {
 
     } catch (error) {
       this.logger.error(`❌ Accessibility scan failed for ${url}:`, error);
-      throw new Error(`Accessibility scan failed: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new Error(`Accessibility scan failed: ${errorMessage}`);
     } finally {
       if (page) {
         await page.close();
@@ -154,7 +155,7 @@ export class AccessibilityScannerService {
       tags: violation.tags,
       nodes: violation.nodes.map(node => ({
         html: node.html,
-        target: node.target,
+        target: Array.isArray(node.target) ? node.target : [String(node.target)],
         failureSummary: node.failureSummary || 'No failure summary available'
       }))
     }));
@@ -231,10 +232,11 @@ export class AccessibilityScannerService {
         browserReady,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       return {
         status: 'unhealthy',
         browserReady: false,
-        lastError: error.message
+        lastError: errorMessage
       };
     }
   }

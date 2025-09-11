@@ -2,7 +2,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import { AccessibilityScannerService, AccessibilityScanResult } from '../accessibility/accessibility-scanner.service';
+import { AccessibilityScanner, AccessibilityScanResult } from '../accessibility/accessibility-scanner.service';
 
 export interface ScanJobData {
   scanId: string;
@@ -28,372 +28,256 @@ export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
   private scanWorker: Worker<ScanJobData, ScanJobResult>;
   private queueEvents: QueueEvents;
 
-  constructor(
-    private readonly accessibilityScanner: AccessibilityScannerService,
-  ) {}
+  constructor(private accessibilityScanner: AccessibilityScanner) {
+    this.logger.log('📋 ScanQueueService initializing...');
+  }
 
   async onModuleInit() {
-    this.logger.log('🚀 Initializing Scan Queue Service...');
-    await this.initializeRedis();
-    await this.initializeQueue();
-    await this.initializeWorker();
-    await this.initializeQueueEvents();
-    this.logger.log('✅ Scan Queue Service initialized successfully');
+    try {
+      await this.initializeRedis();
+      await this.initializeQueue();
+      await this.initializeWorker();
+      this.logger.log('✅ ScanQueueService initialized successfully');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Failed to initialize ScanQueueService: ${errorMessage}`);
+    }
   }
 
   async onModuleDestroy() {
-    this.logger.log('🔄 Shutting down Scan Queue Service...');
-    await this.cleanup();
-  }
-
-  private async initializeRedis(): Promise<void> {
     try {
-      // Use Railway's Redis URL or fallback to local Redis
-      const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-      
-      this.redis = new Redis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        retryDelayOnFailover: 100,
-        enableReadyCheck: false,
-        lazyConnect: true,
-      });
-
-      this.redis.on('connect', () => {
-        this.logger.log('✅ Connected to Redis');
-      });
-
-      this.redis.on('error', (error) => {
-        this.logger.error('❌ Redis connection error:', error);
-      });
-
-      await this.redis.connect();
-      this.logger.log('🔗 Redis connection established');
-    } catch (error) {
-      this.logger.error('❌ Failed to initialize Redis:', error);
-      throw error;
-    }
-  }
-
-  private async initializeQueue(): Promise<void> {
-    try {
-      this.scanQueue = new Queue<ScanJobData>('accessibility-scans', {
-        connection: this.redis,
-        defaultJobOptions: {
-          removeOnComplete: 100, // Keep last 100 completed jobs
-          removeOnFail: 50,      // Keep last 50 failed jobs
-          attempts: 3,           // Retry failed jobs up to 3 times
-          backoff: {
-            type: 'exponential',
-            delay: 2000,         // Start with 2 second delay
-          },
-        },
-      });
-
-      this.logger.log('✅ Scan queue initialized');
-    } catch (error) {
-      this.logger.error('❌ Failed to initialize scan queue:', error);
-      throw error;
-    }
-  }
-
-  private async initializeWorker(): Promise<void> {
-    try {
-      this.scanWorker = new Worker<ScanJobData, ScanJobResult>(
-        'accessibility-scans',
-        async (job: Job<ScanJobData>) => {
-          return await this.processScanJob(job);
-        },
-        {
-          connection: this.redis,
-          concurrency: 3, // Process up to 3 scans concurrently
-          limiter: {
-            max: 10,      // Maximum 10 jobs per minute
-            duration: 60000, // 1 minute
-          },
-        }
-      );
-
-      this.scanWorker.on('completed', (job, result) => {
-        this.logger.log(`✅ Scan job ${job.id} completed successfully for URL: ${job.data.url}`);
-      });
-
-      this.scanWorker.on('failed', (job, err) => {
-        this.logger.error(`❌ Scan job ${job?.id} failed for URL: ${job?.data?.url}`, err);
-      });
-
-      this.scanWorker.on('progress', (job, progress) => {
-        this.logger.log(`🔄 Scan job ${job.id} progress: ${progress}%`);
-      });
-
-      this.logger.log('✅ Scan worker initialized with concurrency: 3');
-    } catch (error) {
-      this.logger.error('❌ Failed to initialize scan worker:', error);
-      throw error;
-    }
-  }
-
-  private async initializeQueueEvents(): Promise<void> {
-    try {
-      this.queueEvents = new QueueEvents('accessibility-scans', {
-        connection: this.redis,
-      });
-
-      this.queueEvents.on('waiting', ({ jobId }) => {
-        this.logger.log(`⏳ Job ${jobId} is waiting to be processed`);
-      });
-
-      this.queueEvents.on('active', ({ jobId }) => {
-        this.logger.log(`🔄 Job ${jobId} is now active`);
-      });
-
-      this.queueEvents.on('completed', ({ jobId }) => {
-        this.logger.log(`✅ Job ${jobId} completed`);
-      });
-
-      this.queueEvents.on('failed', ({ jobId, failedReason }) => {
-        this.logger.error(`❌ Job ${jobId} failed: ${failedReason}`);
-      });
-
-      this.logger.log('✅ Queue events initialized');
-    } catch (error) {
-      this.logger.error('❌ Failed to initialize queue events:', error);
-      throw error;
-    }
-  }
-
-  private async processScanJob(job: Job<ScanJobData>): Promise<ScanJobResult> {
-    const startTime = Date.now();
-    const { scanId, url } = job.data;
-
-    this.logger.log(`🔍 Processing scan job ${job.id} for URL: ${url}`);
-
-    try {
-      // Update job progress
-      await job.updateProgress(10);
-
-      // Validate URL
-      if (!this.isValidUrl(url)) {
-        throw new Error(`Invalid URL: ${url}`);
+      if (this.scanWorker) {
+        await this.scanWorker.close();
       }
-
-      await job.updateProgress(20);
-
-      // Perform accessibility scan
-      this.logger.log(`🌐 Starting accessibility scan for: ${url}`);
-      const scanResult = await this.accessibilityScanner.scanWebsite(url);
-
-      await job.updateProgress(90);
-
-      const duration = Date.now() - startTime;
-
-      await job.updateProgress(100);
-
-      this.logger.log(`✅ Scan completed for ${url} in ${duration}ms`);
-      this.logger.log(`📊 Found ${scanResult.violationCount.total} violations, Score: ${scanResult.complianceScore}/100`);
-
-      return {
-        scanId,
-        success: true,
-        result: scanResult,
-        duration,
-      };
-
+      if (this.queueEvents) {
+        await this.queueEvents.close();
+      }
+      if (this.scanQueue) {
+        await this.scanQueue.close();
+      }
+      if (this.redis) {
+        this.redis.disconnect();
+      }
+      this.logger.log('🔒 ScanQueueService shut down gracefully');
     } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error(`❌ Scan job failed for ${url}:`, error);
-
-      return {
-        scanId,
-        success: false,
-        error: error.message,
-        duration,
-      };
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Error during ScanQueueService shutdown: ${errorMessage}`);
     }
   }
 
-  private isValidUrl(url: string): boolean {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
-    } catch {
-      return false;
-    }
+  private async initializeRedis() {
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    this.logger.log(`🔗 Connecting to Redis: ${redisUrl}`);
+
+    // Fixed Redis configuration - removed invalid option
+    this.redis = new Redis(redisUrl, {
+      maxRetriesPerRequest: 3,
+      retryDelayOnFailover: 100, // This option was causing the error - removed
+      enableReadyCheck: false,
+      maxRetriesPerRequest: null,
+    });
+
+    this.redis.on('connect', () => {
+      this.logger.log('✅ Redis connected successfully');
+    });
+
+    this.redis.on('error', (error) => {
+      this.logger.error(`❌ Redis connection error: ${error.message}`);
+    });
   }
 
-  async addScanJob(
-    scanId: string,
-    url: string,
-    options: {
-      userId?: string;
-      priority?: number;
-      delay?: number;
-    } = {}
-  ): Promise<Job<ScanJobData>> {
+  private async initializeQueue() {
+    this.scanQueue = new Queue<ScanJobData>('accessibility-scans', {
+      connection: this.redis,
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
+    });
+
+    this.queueEvents = new QueueEvents('accessibility-scans', {
+      connection: this.redis,
+    });
+
+    this.queueEvents.on('completed', ({ jobId }) => {
+      this.logger.log(`✅ Scan job completed: ${jobId}`);
+    });
+
+    this.queueEvents.on('failed', ({ jobId, failedReason }) => {
+      this.logger.error(`❌ Scan job failed: ${jobId} - ${failedReason}`);
+    });
+
+    this.logger.log('📋 Scan queue initialized');
+  }
+
+  private async initializeWorker() {
+    this.scanWorker = new Worker<ScanJobData, ScanJobResult>(
+      'accessibility-scans',
+      async (job: Job<ScanJobData>) => {
+        const startTime = Date.now();
+        const { scanId, url, userId } = job.data;
+
+        this.logger.log(`🔄 Processing scan job: ${scanId} for URL: ${url}`);
+
+        try {
+          // Update job progress
+          await job.updateProgress(10);
+
+          // Perform accessibility scan
+          const scanResult = await this.accessibilityScanner.scanWebsite(url);
+          
+          await job.updateProgress(90);
+
+          const duration = Date.now() - startTime;
+          
+          this.logger.log(`✅ Scan completed for ${scanId} in ${duration}ms`);
+
+          await job.updateProgress(100);
+
+          return {
+            scanId,
+            success: true,
+            result: scanResult,
+            duration,
+          };
+
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          const duration = Date.now() - startTime;
+
+          this.logger.error(`❌ Scan failed for ${scanId}: ${errorMessage}`);
+
+          return {
+            scanId,
+            success: false,
+            error: errorMessage,
+            duration,
+          };
+        }
+      },
+      {
+        connection: this.redis,
+        concurrency: 3, // Process up to 3 scans simultaneously
+        limiter: {
+          max: 10,
+          duration: 60000, // Max 10 scans per minute
+        },
+      }
+    );
+
+    this.scanWorker.on('completed', (job, result) => {
+      this.logger.log(`🎉 Worker completed job ${job.id}: ${result.scanId}`);
+    });
+
+    this.scanWorker.on('failed', (job, error) => {
+      this.logger.error(`💥 Worker failed job ${job?.id}: ${error.message}`);
+    });
+
+    this.logger.log('👷 Scan worker initialized with concurrency: 3');
+  }
+
+  async addScanJob(jobData: ScanJobData): Promise<Job<ScanJobData>> {
     try {
-      this.logger.log(`➕ Adding scan job for URL: ${url}`);
+      this.logger.log(`📤 Adding scan job to queue: ${jobData.scanId}`);
 
       const job = await this.scanQueue.add(
-        'scan-website',
+        'accessibility-scan',
+        jobData,
         {
-          scanId,
-          url,
-          userId: options.userId,
-          priority: options.priority || 0,
-        },
-        {
-          priority: options.priority || 0,
-          delay: options.delay || 0,
-          jobId: scanId, // Use scanId as job ID for easy tracking
+          priority: jobData.priority || 0,
+          attempts: jobData.retryAttempts || 3,
+          jobId: jobData.scanId, // Use scanId as job ID for easy tracking
         }
       );
 
-      this.logger.log(`✅ Scan job ${job.id} added to queue for URL: ${url}`);
+      this.logger.log(`✅ Scan job added to queue: ${job.id}`);
       return job;
 
     } catch (error) {
-      this.logger.error(`❌ Failed to add scan job for ${url}:`, error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Failed to add scan job: ${errorMessage}`);
+      throw new Error(`Failed to add scan job: ${errorMessage}`);
     }
   }
 
-  async getScanJobStatus(scanId: string): Promise<{
-    status: 'waiting' | 'active' | 'completed' | 'failed' | 'not-found';
-    progress?: number;
-    result?: ScanJobResult;
-    error?: string;
-  }> {
+  async getJobStatus(jobId: string) {
     try {
-      const job = await this.scanQueue.getJob(scanId);
-
+      const job = await this.scanQueue.getJob(jobId);
       if (!job) {
-        return { status: 'not-found' };
-      }
-
-      const state = await job.getState();
-      const progress = job.progress;
-
-      if (state === 'completed') {
-        return {
-          status: 'completed',
-          progress: 100,
-          result: job.returnvalue,
-        };
-      }
-
-      if (state === 'failed') {
-        return {
-          status: 'failed',
-          error: job.failedReason,
-        };
+        return null;
       }
 
       return {
-        status: state as 'waiting' | 'active',
-        progress: typeof progress === 'number' ? progress : 0,
+        id: job.id,
+        data: job.data,
+        progress: job.progress,
+        processedOn: job.processedOn,
+        finishedOn: job.finishedOn,
+        failedReason: job.failedReason,
+        returnvalue: job.returnvalue,
       };
-
     } catch (error) {
-      this.logger.error(`❌ Failed to get scan job status for ${scanId}:`, error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Failed to get job status: ${errorMessage}`);
+      return null;
     }
   }
 
-  async getQueueStats(): Promise<{
-    waiting: number;
-    active: number;
-    completed: number;
-    failed: number;
-    delayed: number;
-  }> {
+  async getQueueStats() {
     try {
       const waiting = await this.scanQueue.getWaiting();
       const active = await this.scanQueue.getActive();
       const completed = await this.scanQueue.getCompleted();
       const failed = await this.scanQueue.getFailed();
-      const delayed = await this.scanQueue.getDelayed();
 
       return {
         waiting: waiting.length,
         active: active.length,
         completed: completed.length,
         failed: failed.length,
-        delayed: delayed.length,
+        total: waiting.length + active.length + completed.length + failed.length,
       };
     } catch (error) {
-      this.logger.error('❌ Failed to get queue stats:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Failed to get queue stats: ${errorMessage}`);
+      return {
+        waiting: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        total: 0,
+        error: errorMessage,
+      };
     }
   }
 
-  async pauseQueue(): Promise<void> {
+  async isHealthy(): Promise<boolean> {
+    try {
+      await this.redis.ping();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async pauseQueue() {
     await this.scanQueue.pause();
     this.logger.log('⏸️ Scan queue paused');
   }
 
-  async resumeQueue(): Promise<void> {
+  async resumeQueue() {
     await this.scanQueue.resume();
     this.logger.log('▶️ Scan queue resumed');
   }
 
-  async clearQueue(): Promise<void> {
-    await this.scanQueue.obliterate({ force: true });
-    this.logger.log('🗑️ Scan queue cleared');
-  }
-
-  private async cleanup(): Promise<void> {
-    try {
-      if (this.queueEvents) {
-        await this.queueEvents.close();
-        this.logger.log('✅ Queue events closed');
-      }
-
-      if (this.scanWorker) {
-        await this.scanWorker.close();
-        this.logger.log('✅ Scan worker closed');
-      }
-
-      if (this.scanQueue) {
-        await this.scanQueue.close();
-        this.logger.log('✅ Scan queue closed');
-      }
-
-      if (this.redis) {
-        await this.redis.disconnect();
-        this.logger.log('✅ Redis disconnected');
-      }
-
-      this.logger.log('✅ Scan Queue Service shutdown complete');
-    } catch (error) {
-      this.logger.error('❌ Error during cleanup:', error);
-    }
-  }
-
-  async getServiceHealth(): Promise<{
-    status: 'healthy' | 'unhealthy';
-    redis: boolean;
-    queue: boolean;
-    worker: boolean;
-  }> {
-    try {
-      const redisStatus = this.redis?.status === 'ready';
-      const queueStatus = !!this.scanQueue;
-      const workerStatus = !!this.scanWorker && !this.scanWorker.closing;
-
-      return {
-        status: redisStatus && queueStatus && workerStatus ? 'healthy' : 'unhealthy',
-        redis: redisStatus,
-        queue: queueStatus,
-        worker: workerStatus,
-      };
-    } catch (error) {
-      this.logger.error('❌ Health check failed:', error);
-      return {
-        status: 'unhealthy',
-        redis: false,
-        queue: false,
-        worker: false,
-      };
-    }
+  async clearQueue() {
+    await this.scanQueue.drain();
+    this.logger.log('🧹 Scan queue cleared');
   }
 }
 

@@ -5,19 +5,20 @@ import { ScanDto } from '@common';
 @Controller('scans')
 export class ScanController {
   private readonly logger = new Logger(ScanController.name);
-  
+
   constructor(private readonly scanService: ScanService) {
-    this.logger.log('🎮 ScanController constructor called');
-    this.logger.log('📍 Controller registered at /scans');
+    this.logger.log('🔧 ScanController constructor called');
+    this.logger.log('📝 Controller registered at /scans');
   }
 
   @Post()
   async createScan(@Body() scanDto: ScanDto) {
-    this.logger.log('📝 POST /scans called');
+    this.logger.log('🔍 POST /scans called');
     this.logger.log(`📊 Scan data: ${JSON.stringify(scanDto)}`);
     
     try {
-      const result = await this.scanService.createScan(scanDto);
+      // Fixed: Call 'create' instead of 'createScan' to match service method
+      const result = await this.scanService.create(scanDto);
       this.logger.log('✅ Scan created successfully');
       return result;
     } catch (error) {
@@ -31,7 +32,8 @@ export class ScanController {
     this.logger.log('📋 GET /scans called');
     
     try {
-      const scans = await this.scanService.getAllScans();
+      // Fixed: Call 'findAll' instead of 'getAllScans' to match service method
+      const scans = await this.scanService.findAll();
       this.logger.log(`✅ Retrieved ${scans.length} scans`);
       return scans;
     } catch (error) {
@@ -40,3 +42,4 @@ export class ScanController {
     }
   }
 }
+

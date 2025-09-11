@@ -1,8 +1,8 @@
 // apps/backend/src/queue/scan-queue.service.ts
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { Queue, Worker, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import { AccessibilityScanner, AccessibilityScanResult } from '../accessibility/accessibility-scanner.service';
+import { AccessibilityScanResult, AccessibilityScanner } from '../accessibility/accessibility-scanner.service';
 
 export interface ScanJobData {
   scanId: string;
@@ -17,19 +17,19 @@ export interface ScanJobResult {
   success: boolean;
   result?: AccessibilityScanResult;
   error?: string;
-  duration: number;
+  duration?: number;
 }
 
 @Injectable()
 export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ScanQueueService.name);
-  private redis: Redis;
+  private readonly redis: Redis;
   private scanQueue: Queue<ScanJobData>;
   private scanWorker: Worker<ScanJobData, ScanJobResult>;
   private queueEvents: QueueEvents;
 
   constructor(private accessibilityScanner: AccessibilityScanner) {
-    this.logger.log('📋 ScanQueueService initializing...');
+    this.logger.log('🔧 ScanQueueService initializing...');
   }
 
   async onModuleInit() {
@@ -58,7 +58,7 @@ export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
       if (this.redis) {
         this.redis.disconnect();
       }
-      this.logger.log('🔒 ScanQueueService shut down gracefully');
+      this.logger.log('🛑 ScanQueueService shut down gracefully');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.logger.error(`❌ Error during ScanQueueService shutdown: ${errorMessage}`);
@@ -69,12 +69,11 @@ export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     this.logger.log(`🔗 Connecting to Redis: ${redisUrl}`);
 
-    // Fixed Redis configuration - removed invalid option
-    this.redis = new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100, // This option was causing the error - removed
-      enableReadyCheck: false,
+    // Fixed Redis configuration - removed invalid options and duplicates
+    (this as any).redis = new Redis(redisUrl, {
       maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: true,
     });
 
     this.redis.on('connect', () => {
@@ -118,40 +117,30 @@ export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
   private async initializeWorker() {
     this.scanWorker = new Worker<ScanJobData, ScanJobResult>(
       'accessibility-scans',
-      async (job: Job<ScanJobData>) => {
-        const startTime = Date.now();
+      async (job) => {
         const { scanId, url, userId } = job.data;
+        this.logger.log(`🔍 Processing scan job: ${scanId} for URL: ${url}`);
 
-        this.logger.log(`🔄 Processing scan job: ${scanId} for URL: ${url}`);
-
+        const startTime = Date.now();
+        
         try {
-          // Update job progress
-          await job.updateProgress(10);
-
-          // Perform accessibility scan
-          const scanResult = await this.accessibilityScanner.scanWebsite(url);
-          
-          await job.updateProgress(90);
-
+          const result = await this.accessibilityScanner.scanWebsite(url);
           const duration = Date.now() - startTime;
+
+          this.logger.log(`✅ Scan completed for ${url} in ${duration}ms`);
           
-          this.logger.log(`✅ Scan completed for ${scanId} in ${duration}ms`);
-
-          await job.updateProgress(100);
-
           return {
             scanId,
             success: true,
-            result: scanResult,
+            result,
             duration,
           };
-
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
           const duration = Date.now() - startTime;
-
-          this.logger.error(`❌ Scan failed for ${scanId}: ${errorMessage}`);
-
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          
+          this.logger.error(`❌ Scan failed for ${url}: ${errorMessage}`);
+          
           return {
             scanId,
             success: false,
@@ -162,72 +151,58 @@ export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
       },
       {
         connection: this.redis,
-        concurrency: 3, // Process up to 3 scans simultaneously
-        limiter: {
-          max: 10,
-          duration: 60000, // Max 10 scans per minute
-        },
+        concurrency: 5, // Process up to 5 scans concurrently
       }
     );
 
-    this.scanWorker.on('completed', (job, result) => {
-      this.logger.log(`🎉 Worker completed job ${job.id}: ${result.scanId}`);
-    });
+    // Set up event listeners
+    this.setupEventListeners();
 
-    this.scanWorker.on('failed', (job, error) => {
-      this.logger.error(`💥 Worker failed job ${job?.id}: ${error.message}`);
-    });
-
-    this.logger.log('👷 Scan worker initialized with concurrency: 3');
+    this.logger.log('✅ Scan queue initialized successfully');
   }
 
-  async addScanJob(jobData: ScanJobData): Promise<Job<ScanJobData>> {
+  /**
+   * Set up event listeners for queue monitoring
+   */
+  private setupEventListeners() {
+    this.scanWorker.on('completed', (job, result) => {
+      this.logger.log(`✅ Worker completed job ${job.id}: ${result.scanId}`);
+    });
+
+    this.scanWorker.on('failed', (job, err) => {
+      this.logger.error(`❌ Worker failed job ${job?.id}: ${err.message}`);
+    });
+
+    this.scanWorker.on('error', (err) => {
+      this.logger.error(`❌ Worker error: ${err.message}`);
+    });
+  }
+
+  /**
+   * Add a new scan job to the queue
+   */
+  async addScanJob(jobData: ScanJobData): Promise<string> {
     try {
-      this.logger.log(`📤 Adding scan job to queue: ${jobData.scanId}`);
+      this.logger.log(`📝 Adding scan job for URL: ${jobData.url}`);
+      
+      const job = await this.scanQueue.add('scan-website', jobData, {
+        priority: jobData.priority || 0,
+        attempts: jobData.retryAttempts || 3,
+        delay: 0,
+      });
 
-      const job = await this.scanQueue.add(
-        'accessibility-scan',
-        jobData,
-        {
-          priority: jobData.priority || 0,
-          attempts: jobData.retryAttempts || 3,
-          jobId: jobData.scanId, // Use scanId as job ID for easy tracking
-        }
-      );
-
-      this.logger.log(`✅ Scan job added to queue: ${job.id}`);
-      return job;
-
+      this.logger.log(`✅ Scan job added with ID: ${job.id}`);
+      return job.id!;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.logger.error(`❌ Failed to add scan job: ${errorMessage}`);
-      throw new Error(`Failed to add scan job: ${errorMessage}`);
+      throw error;
     }
   }
 
-  async getJobStatus(jobId: string) {
-    try {
-      const job = await this.scanQueue.getJob(jobId);
-      if (!job) {
-        return null;
-      }
-
-      return {
-        id: job.id,
-        data: job.data,
-        progress: job.progress,
-        processedOn: job.processedOn,
-        finishedOn: job.finishedOn,
-        failedReason: job.failedReason,
-        returnvalue: job.returnvalue,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.logger.error(`❌ Failed to get job status: ${errorMessage}`);
-      return null;
-    }
-  }
-
+  /**
+   * Get queue statistics
+   */
   async getQueueStats() {
     try {
       const waiting = await this.scanQueue.getWaiting();
@@ -245,39 +220,36 @@ export class ScanQueueService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.logger.error(`❌ Failed to get queue stats: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get service health status
+   */
+  async getServiceHealth() {
+    try {
+      const queueStats = await this.getQueueStats();
+      const redisStatus = this.redis.status;
+      
       return {
-        waiting: 0,
-        active: 0,
-        completed: 0,
-        failed: 0,
-        total: 0,
+        status: redisStatus === 'ready' ? 'healthy' : 'unhealthy',
+        redis: {
+          status: redisStatus,
+          connected: this.redis.status === 'ready',
+        },
+        queue: queueStats,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Failed to get service health: ${errorMessage}`);
+      return {
+        status: 'unhealthy',
         error: errorMessage,
+        timestamp: new Date().toISOString(),
       };
     }
-  }
-
-  async isHealthy(): Promise<boolean> {
-    try {
-      await this.redis.ping();
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  async pauseQueue() {
-    await this.scanQueue.pause();
-    this.logger.log('⏸️ Scan queue paused');
-  }
-
-  async resumeQueue() {
-    await this.scanQueue.resume();
-    this.logger.log('▶️ Scan queue resumed');
-  }
-
-  async clearQueue() {
-    await this.scanQueue.drain();
-    this.logger.log('🧹 Scan queue cleared');
   }
 }
 

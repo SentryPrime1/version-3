@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Scan } from '../entities/scan.entity';
 import { ScanQueueService } from '../queue/scan-queue.service';
-import { CreateScanDto } from '../../../../packages/common/src/dtos/Scan.dto';
+import { CreateScanDto } from '../../../packages/common/src/dtos/Scan.dto';
 
 @Injectable()
 export class ScanService {
@@ -17,20 +17,23 @@ export class ScanService {
 
   async create(createScanDto: CreateScanDto): Promise<Scan> {
     try {
-      this.logger.log(`Creating new scan for URL: ${createScanDto.url}`);
+      this.logger.log(`Creating new scan for URL: ${createScanDto.url} (User: ${createScanDto.userId})`);
       
       const scan = this.scanRepository.create({
         url: createScanDto.url,
+        userId: createScanDto.userId,
         status: 'pending' as const,
         createdAt: new Date(),
         updatedAt: new Date(),
+        options: createScanDto.options,
       });
 
       const savedScan = await this.scanRepository.save(scan);
       this.logger.log(`Scan created with ID: ${savedScan.id}`);
 
-      // Add scan job to queue
-      await this.scanQueueService.addScanJob(savedScan.id, createScanDto.url);
+      // Fix: Call addScanJob with single argument (the complete scan object or scan ID)
+      // The method signature expects 1 argument, so we pass the saved scan object
+      await this.scanQueueService.addScanJob(savedScan);
       this.logger.log(`Scan job added to queue for scan ID: ${savedScan.id}`);
 
       return savedScan;
@@ -73,6 +76,22 @@ export class ScanService {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Failed to retrieve scan: ${errorMessage}`);
       throw new Error(`Failed to retrieve scan: ${errorMessage}`);
+    }
+  }
+
+  async findByUserId(userId: number): Promise<Scan[]> {
+    try {
+      this.logger.log(`Retrieving scans for user ID: ${userId}`);
+      const scans = await this.scanRepository.find({
+        where: { userId },
+        order: { createdAt: 'DESC' },
+      });
+      this.logger.log(`Found ${scans.length} scans for user ${userId}`);
+      return scans;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to retrieve scans for user: ${errorMessage}`);
+      throw new Error(`Failed to retrieve scans for user: ${errorMessage}`);
     }
   }
 
@@ -119,12 +138,18 @@ export class ScanService {
   async getHealthStatus(): Promise<{ status: string; details: any }> {
     try {
       const scanCount = await this.scanRepository.count();
+      const recentScans = await this.scanRepository.count({
+        where: {
+          createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
+        },
+      });
       
       return {
         status: 'healthy',
         details: {
           database: 'connected',
           totalScans: scanCount,
+          recentScans: recentScans,
           queue: 'available',
           timestamp: new Date().toISOString(),
         },
@@ -139,6 +164,28 @@ export class ScanService {
           timestamp: new Date().toISOString(),
         },
       };
+    }
+  }
+
+  async getStatistics(): Promise<{ total: number; pending: number; completed: number; failed: number }> {
+    try {
+      this.logger.log('Retrieving scan statistics');
+      
+      const [total, pending, completed, failed] = await Promise.all([
+        this.scanRepository.count(),
+        this.scanRepository.count({ where: { status: 'pending' } }),
+        this.scanRepository.count({ where: { status: 'completed' } }),
+        this.scanRepository.count({ where: { status: 'failed' } }),
+      ]);
+
+      const stats = { total, pending, completed, failed };
+      this.logger.log(`Scan statistics: ${JSON.stringify(stats)}`);
+      
+      return stats;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to retrieve scan statistics: ${errorMessage}`);
+      throw new Error(`Failed to retrieve scan statistics: ${errorMessage}`);
     }
   }
 }

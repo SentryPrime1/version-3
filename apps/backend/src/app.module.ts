@@ -1,8 +1,11 @@
-import { Module, Logger } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+// apps/backend/src/app.module.ts
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ScanModule } from './scan/scan.module';
+import { ConfigModule } from '@nestjs/config';
 import { HealthModule } from './health/health.module';
+import { ScanModule } from './scan/scan.module';
+import { AccessibilityModule } from './accessibility/accessibility.module';
+import { QueueModule } from './queue/queue.module';
 import { Scan } from './entities/scan.entity';
 
 @Module({
@@ -10,36 +13,27 @@ import { Scan } from './entities/scan.entity';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    TypeOrmModule.forRootAsync({
-      useFactory: () => {
-        const logger = new Logger('TypeORM');
-        logger.log('🔗 Configuring TypeORM connection...');
-        logger.log(`📊 Database URL: ${process.env.DATABASE_URL ? 'CONFIGURED' : 'MISSING'}`);
-        logger.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        
-        const config = {
-          type: 'postgres' as const,
-          url: process.env.DATABASE_URL,
-          entities: [Scan],
-          synchronize: true, // Only for development - creates tables automatically
-          ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-          logging: true, // Enable SQL logging
-          logger: 'advanced-console' as const,
-        };
-        
-        logger.log('✅ TypeORM configuration created');
-        return config;
-      },
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      url: process.env.DATABASE_URL,
+      entities: [Scan],
+      synchronize: true,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      logging: process.env.NODE_ENV === 'development',
     }),
-    ScanModule,
     HealthModule,
+    ScanModule,
+    AccessibilityModule,
+    QueueModule,
   ],
+  controllers: [],
+  providers: [],
 })
 export class AppModule {
-  private readonly logger = new Logger(AppModule.name);
-  
   constructor() {
-    this.logger.log('🏗️ AppModule constructor called');
-    this.logger.log('📦 Modules: ConfigModule, TypeOrmModule, ScanModule, HealthModule');
+    console.log('🔧 AppModule initialized with all services');
+    console.log('📊 Database URL configured:', !!process.env.DATABASE_URL);
+    console.log('🔗 Redis URL configured:', !!process.env.REDIS_URL);
   }
 }
+

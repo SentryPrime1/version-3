@@ -4,11 +4,7 @@ import { AccessibilityScanner } from './accessibility-scanner.service';
 
 @Module({
   providers: [AccessibilityScanner],
-  exports: [AccessibilityScanner],
+  exports: [AccessibilityScanner], // Fixed: Export AccessibilityScanner, not AccessibilityScannerService
 })
-export class AccessibilityModule {
-  constructor() {
-    console.log('🔍 AccessibilityModule initialized');
-  }
-}
+export class AccessibilityModule {}
 

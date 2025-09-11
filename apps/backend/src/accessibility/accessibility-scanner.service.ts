@@ -27,33 +27,25 @@ export interface AccessibilityScanResult {
     serious: number;
     moderate: number;
     minor: number;
-    total: number;
   };
-  complianceScore: number; // 0-100, higher is better
-  wcagLevel: 'AA' | 'AAA';
+  complianceScore: number;
   passedRules: number;
-  totalRules: number;
-  scanDuration: number; // milliseconds
+  failedRules: number;
+  scanDuration: number;
 }
 
 @Injectable()
-export class AccessibilityScannerService {
-  private readonly logger = new Logger(AccessibilityScannerService.name);
+export class AccessibilityScanner {
+  private readonly logger = new Logger(AccessibilityScanner.name);
   private browser: Browser | null = null;
 
+  constructor() {
+    this.logger.log('🔍 AccessibilityScanner service initialized');
+  }
+
   async onModuleInit() {
-    this.logger.log('🚀 Initializing Accessibility Scanner Service...');
-    await this.initializeBrowser();
-  }
-
-  async onModuleDestroy() {
-    this.logger.log('🔄 Shutting down Accessibility Scanner Service...');
-    await this.closeBrowser();
-  }
-
-  private async initializeBrowser(): Promise<void> {
     try {
-      this.logger.log('🌐 Launching Puppeteer browser...');
+      this.logger.log('🚀 Initializing Puppeteer browser...');
       this.browser = await puppeteer.launch({
         headless: true,
         args: [
@@ -67,18 +59,17 @@ export class AccessibilityScannerService {
           '--disable-gpu'
         ]
       });
-      this.logger.log('✅ Puppeteer browser launched successfully');
+      this.logger.log('✅ Puppeteer browser initialized successfully');
     } catch (error) {
-      this.logger.error('❌ Failed to launch Puppeteer browser:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Failed to initialize Puppeteer: ${errorMessage}`);
     }
   }
 
-  private async closeBrowser(): Promise<void> {
+  async onModuleDestroy() {
     if (this.browser) {
       await this.browser.close();
-      this.browser = null;
-      this.logger.log('✅ Puppeteer browser closed');
+      this.logger.log('🔒 Puppeteer browser closed');
     }
   }
 
@@ -86,51 +77,51 @@ export class AccessibilityScannerService {
     const startTime = Date.now();
     this.logger.log(`🔍 Starting accessibility scan for: ${url}`);
 
-    if (!this.browser) {
-      await this.initializeBrowser();
-    }
-
     let page: Page | null = null;
 
     try {
-      // Create new page
-      page = await this.browser!.newPage();
-      
-      // Set viewport for consistent scanning
-      await page.setViewport({ width: 1280, height: 720 });
-      
-      // Set user agent
-      await page.setUserAgent('SentryPrime-ADA-Scanner/1.0');
+      // Ensure browser is available
+      if (!this.browser) {
+        await this.onModuleInit();
+      }
 
-      this.logger.log(`📄 Loading page: ${url}`);
+      if (!this.browser) {
+        throw new Error('Failed to initialize browser');
+      }
+
+      // Create new page
+      page = await this.browser.newPage();
       
-      // Navigate to the page with timeout
+      // Set viewport and user agent
+      await page.setViewport({ width: 1280, height: 720 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+
+      // Navigate to the URL
+      this.logger.log(`📄 Loading page: ${url}`);
       await page.goto(url, { 
-        waitUntil: 'networkidle2', 
+        waitUntil: 'networkidle2',
         timeout: 30000 
       });
 
-      this.logger.log('🔬 Running axe-core accessibility analysis...');
+      // Wait for page to be fully loaded
+      await page.waitForTimeout(2000);
 
       // Run axe-core accessibility analysis
-      const axeResults: AxeResults = await new AxePuppeteer(page)
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-        .analyze();
-
-      const scanDuration = Date.now() - startTime;
+      this.logger.log('🔬 Running axe-core accessibility analysis...');
+      const axeResults: AxeResults = await new AxePuppeteer(page).analyze();
 
       // Process results
-      const result = this.processAxeResults(url, axeResults, scanDuration);
+      const scanResult = await this.processAxeResults(url, axeResults, startTime);
       
-      this.logger.log(`✅ Scan completed for ${url} in ${scanDuration}ms`);
-      this.logger.log(`📊 Found ${result.violationCount.total} violations (Critical: ${result.violationCount.critical}, Serious: ${result.violationCount.serious})`);
-      this.logger.log(`🎯 Compliance Score: ${result.complianceScore}/100`);
+      this.logger.log(`✅ Accessibility scan completed for ${url}`);
+      this.logger.log(`📊 Found ${scanResult.violations.length} violations`);
+      this.logger.log(`🎯 Compliance score: ${scanResult.complianceScore}%`);
 
-      return result;
+      return scanResult;
 
     } catch (error) {
-      this.logger.error(`❌ Accessibility scan failed for ${url}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error(`❌ Accessibility scan failed for ${url}: ${errorMessage}`);
       throw new Error(`Accessibility scan failed: ${errorMessage}`);
     } finally {
       if (page) {
@@ -139,13 +130,15 @@ export class AccessibilityScannerService {
     }
   }
 
-  private processAxeResults(
+  private async processAxeResults(
     url: string, 
     axeResults: AxeResults, 
-    scanDuration: number
-  ): AccessibilityScanResult {
+    startTime: number
+  ): Promise<AccessibilityScanResult> {
     
-    // Convert axe violations to our format
+    const scanDuration = Date.now() - startTime;
+
+    // Convert axe violations to our format with proper type handling
     const violations: AccessibilityViolation[] = axeResults.violations.map((violation: AxeViolation) => ({
       id: violation.id,
       impact: violation.impact as 'minor' | 'moderate' | 'serious' | 'critical',
@@ -155,7 +148,7 @@ export class AccessibilityScannerService {
       tags: violation.tags,
       nodes: violation.nodes.map(node => ({
         html: node.html,
-        target: Array.isArray(node.target) ? node.target : [String(node.target)],
+        target: Array.isArray(node.target) ? node.target.map(t => String(t)) : [String(node.target)],
         failureSummary: node.failureSummary || 'No failure summary available'
       }))
     }));
@@ -166,24 +159,12 @@ export class AccessibilityScannerService {
       serious: violations.filter(v => v.impact === 'serious').length,
       moderate: violations.filter(v => v.impact === 'moderate').length,
       minor: violations.filter(v => v.impact === 'minor').length,
-      total: violations.length
     };
 
     // Calculate compliance score (0-100)
-    const totalRules = axeResults.passes.length + violations.length;
+    const totalRules = axeResults.passes.length + axeResults.violations.length;
     const passedRules = axeResults.passes.length;
-    
-    // Weight violations by severity for scoring
-    const weightedViolations = 
-      (violationCount.critical * 4) + 
-      (violationCount.serious * 3) + 
-      (violationCount.moderate * 2) + 
-      (violationCount.minor * 1);
-
-    // Calculate score (higher is better)
-    const maxPossibleScore = totalRules * 4; // If all rules were critical violations
-    const actualScore = maxPossibleScore - weightedViolations;
-    const complianceScore = Math.max(0, Math.round((actualScore / maxPossibleScore) * 100));
+    const complianceScore = totalRules > 0 ? Math.round((passedRules / totalRules) * 100) : 0;
 
     return {
       url,
@@ -191,54 +172,31 @@ export class AccessibilityScannerService {
       violations,
       violationCount,
       complianceScore,
-      wcagLevel: 'AA', // We're testing WCAG 2.1 AA compliance
-      passedRules,
-      totalRules,
+      passedRules: axeResults.passes.length,
+      failedRules: axeResults.violations.length,
       scanDuration
     };
   }
 
-  async testConnection(): Promise<boolean> {
+  async isHealthy(): Promise<boolean> {
     try {
-      this.logger.log('🧪 Testing accessibility scanner connection...');
-      
       if (!this.browser) {
-        await this.initializeBrowser();
+        await this.onModuleInit();
       }
-
-      const page = await this.browser!.newPage();
-      await page.goto('data:text/html,<html><body><h1>Test</h1></body></html>');
-      await page.close();
-      
-      this.logger.log('✅ Accessibility scanner test successful');
-      return true;
+      return this.browser !== null;
     } catch (error) {
-      this.logger.error('❌ Accessibility scanner test failed:', error);
+      this.logger.error('Health check failed:', error);
       return false;
     }
   }
 
-  async getServiceStatus(): Promise<{
-    status: 'healthy' | 'unhealthy';
-    browserReady: boolean;
-    lastError?: string;
-  }> {
-    try {
-      const browserReady = this.browser !== null;
-      const testPassed = await this.testConnection();
-      
-      return {
-        status: testPassed ? 'healthy' : 'unhealthy',
-        browserReady,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      return {
-        status: 'unhealthy',
-        browserReady: false,
-        lastError: errorMessage
-      };
-    }
+  async getServiceStats() {
+    return {
+      browserInitialized: this.browser !== null,
+      timestamp: new Date().toISOString(),
+      service: 'AccessibilityScanner',
+      version: '1.0.0'
+    };
   }
 }
 

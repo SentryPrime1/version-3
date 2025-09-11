@@ -1,10 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+// apps/backend/src/scan/scan.service.ts
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Scan } from '../entities/scan.entity';
-import { ScanDto } from '@common';
-
-type ScanStatus = 'pending' | 'completed' | 'failed';
+import { ScanQueueService } from '../queue/scan-queue.service';
+import { CreateScanDto } from '@common/dtos/Scan.dto';
 
 @Injectable()
 export class ScanService {
@@ -13,56 +13,83 @@ export class ScanService {
   constructor(
     @InjectRepository(Scan)
     private scanRepository: Repository<Scan>,
-  ) {}
-
-  async createScan(scanDto: ScanDto): Promise<Scan> {
-    this.logger.log(`Creating scan for ${scanDto.url}`);
-    
-    const scan = this.scanRepository.create({
-      url: scanDto.url,
-      status: 'pending' as ScanStatus,
-      createdAt: new Date(),
-    });
-    
-    return this.scanRepository.save(scan);
+    private scanQueueService: ScanQueueService,
+  ) {
+    this.logger.log('🎮 ScanService initialized with queue integration');
   }
 
-  async getAllScans(): Promise<Scan[]> {
+  async findAll(): Promise<Scan[]> {
+    this.logger.log('📋 Fetching all scans');
     return this.scanRepository.find({
       order: { createdAt: 'DESC' },
     });
   }
 
-  async getScanById(id: string): Promise<Scan> {
-    const scan = await this.scanRepository.findOne({ where: { id } });
-    if (!scan) {
-      throw new NotFoundException(`Scan with ID ${id} not found`);
-    }
-    return scan;
+  async findOne(id: string): Promise<Scan> {
+    this.logger.log(`🔍 Fetching scan with ID: ${id}`);
+    return this.scanRepository.findOne({ where: { id } });
   }
 
-  async updateScanStatus(id: string, status: ScanStatus): Promise<Scan> {
-    const scan = await this.scanRepository.findOne({ where: { id } });
-    if (!scan) {
-      throw new NotFoundException(`Scan with ID ${id} not found`);
+  async create(createScanDto: CreateScanDto): Promise<Scan> {
+    this.logger.log(`🚀 Creating new scan for URL: ${createScanDto.url}`);
+    
+    try {
+      // Create scan record in database
+      const scan = this.scanRepository.create({
+        url: createScanDto.url,
+        userId: createScanDto.userId,
+        status: 'pending',
+        createdAt: new Date(),
+      });
+
+      const savedScan = await this.scanRepository.save(scan);
+      this.logger.log(`✅ Scan created with ID: ${savedScan.id}`);
+
+      // Add scan to queue for processing
+      await this.scanQueueService.addScanJob({
+        scanId: savedScan.id,
+        url: createScanDto.url,
+        userId: createScanDto.userId,
+      });
+
+      this.logger.log(`📋 Scan job queued for processing: ${savedScan.id}`);
+      return savedScan;
+
+    } catch (error) {
+      this.logger.error(`❌ Failed to create scan: ${error.message}`);
+      throw error;
     }
-    
-    // Ensure status is properly typed
-    const validStatuses: ScanStatus[] = ['pending', 'completed', 'failed'];
-    if (!validStatuses.includes(status)) {
-      throw new Error(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
-    }
-    
-    scan.status = status;
-    scan.updatedAt = new Date();
-    
-    return this.scanRepository.save(scan);
   }
 
-  async deleteScan(id: string): Promise<void> {
-    const result = await this.scanRepository.delete(id);
-    if (result.affected === 0) {
-      throw new NotFoundException(`Scan with ID ${id} not found`);
+  async updateScanStatus(id: string, status: string, result?: any): Promise<Scan> {
+    this.logger.log(`🔄 Updating scan ${id} status to: ${status}`);
+    
+    const updateData: any = { status, updatedAt: new Date() };
+    if (result) {
+      updateData.result = result;
+      updateData.completedAt = new Date();
     }
+
+    await this.scanRepository.update(id, updateData);
+    return this.findOne(id);
+  }
+
+  async getQueueStats() {
+    this.logger.log('📊 Fetching queue statistics');
+    return this.scanQueueService.getQueueStats();
+  }
+
+  async getServiceHealth() {
+    this.logger.log('🏥 Checking service health');
+    
+    const dbHealth = await this.scanRepository.count();
+    const queueHealth = await this.scanQueueService.isHealthy();
+    
+    return {
+      database: dbHealth >= 0,
+      queue: queueHealth,
+      timestamp: new Date().toISOString(),
+    };
   }
 }
+

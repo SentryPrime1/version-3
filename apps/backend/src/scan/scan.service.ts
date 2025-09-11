@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Scan } from '../entities/scan.entity';
-// Fix 1: Use correct import path that works with TypeScript path mapping
+// Fix 1: Use the correct import path that works with your monorepo structure
 import { CreateScanDto } from '@common/dtos/Scan.dto';
 import { ScanQueueService } from '../queue/scan-queue.service';
 

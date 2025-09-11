@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Scan } from '../entities/scan.entity';
-// Fix 1: Use the correct import path that works with your monorepo structure
-import { CreateScanDto } from '@common/dtos/Scan.dto';
+// Fix: Use relative path instead of @common alias
+import { CreateScanDto } from '../../../packages/common/src/dtos/Scan.dto';
 import { ScanQueueService } from '../queue/scan-queue.service';
 
 @Injectable()
@@ -23,7 +23,7 @@ export class ScanService {
       // Create scan entity
       const scan = this.scanRepository.create({
         url: createScanDto.url,
-        status: 'pending' as const, // Fix 2: Use const assertion for literal type
+        status: 'pending' as const,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -46,7 +46,6 @@ export class ScanService {
 
       return savedScan;
     } catch (error) {
-      // Fix 3: Proper error type handling
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.logger.error(`❌ Failed to create scan: ${errorMessage}`);
       throw new Error(`Failed to create scan: ${errorMessage}`);
@@ -68,7 +67,7 @@ export class ScanService {
     }
   }
 
-  async findOne(id: string): Promise<Scan> { // Fix 4: Change parameter type to string to match UUID
+  async findOne(id: string): Promise<Scan> {
     this.logger.log(`🔍 Finding scan with ID: ${id}`);
     try {
       const scan = await this.scanRepository.findOne({ where: { id } });
@@ -84,7 +83,7 @@ export class ScanService {
     }
   }
 
-  async updateStatus(id: string, status: 'pending' | 'completed' | 'failed', results?: any): Promise<Scan> { // Fix 5: Proper typing
+  async updateStatus(id: string, status: 'pending' | 'completed' | 'failed', results?: any): Promise<Scan> {
     this.logger.log(`🔄 Updating scan ${id} status to: ${status}`);
     try {
       const scan = await this.findOne(id);
@@ -107,8 +106,6 @@ export class ScanService {
 
   async getHealthStatus(): Promise<{ status: string; details: any }> {
     try {
-      // Fix 6: Remove the non-existent isHealthy method call
-      // Instead, implement a simple health check
       const scanCount = await this.scanRepository.count();
       
       return {
@@ -116,7 +113,7 @@ export class ScanService {
         details: {
           database: 'connected',
           totalScans: scanCount,
-          queue: 'available', // Simplified queue status
+          queue: 'available',
           timestamp: new Date().toISOString(),
         },
       };

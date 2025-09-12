@@ -1,16 +1,14 @@
-// apps/backend/src/queue/queue.module.ts
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
 import { ScanQueueService } from './scan-queue.service';
-import { AccessibilityModule } from '../accessibility/accessibility.module';
 
 @Module({
-  imports: [AccessibilityModule],
+  imports: [
+    BullModule.registerQueue({
+      name: 'scan-queue',
+    }),
+  ],
   providers: [ScanQueueService],
   exports: [ScanQueueService],
 })
-export class QueueModule {
-  constructor() {
-    console.log('📋 QueueModule initialized');
-  }
-}
-
+export class QueueModule {}

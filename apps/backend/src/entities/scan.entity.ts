@@ -2,24 +2,23 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 
 @Entity('scans')
 export class Scan {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Column({ type: 'varchar', length: 2048 })
+  @Column()
   url: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column()
   userId: string;
 
-  @Column({ 
-    type: 'enum', 
-    enum: ['pending', 'completed', 'failed'],
-    default: 'pending'
-  })
-  status: 'pending' | 'completed' | 'failed';
+  @Column({ default: 'pending' })
+  status: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  results: any;
+  @Column({ type: 'json', nullable: true })
+  options?: any;
+
+  @Column({ type: 'json', nullable: true })
+  results?: any;
 
   @CreateDateColumn()
   createdAt: Date;

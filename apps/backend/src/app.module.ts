@@ -1,10 +1,8 @@
-// apps/backend/src/app.module.ts
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import { HealthModule } from './health/health.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bull';
 import { ScanModule } from './scan/scan.module';
-import { AccessibilityModule } from './accessibility/accessibility.module';
 import { QueueModule } from './queue/queue.module';
 import { Scan } from './entities/scan.entity';
 
@@ -15,25 +13,23 @@ import { Scan } from './entities/scan.entity';
     }),
     TypeOrmModule.forRoot({
       type: 'postgres',
-      url: process.env.DATABASE_URL,
+      host: process.env.DATABASE_HOST || 'localhost',
+      port: parseInt(process.env.DATABASE_PORT) || 5432,
+      username: process.env.DATABASE_USER || 'postgres',
+      password: process.env.DATABASE_PASSWORD || 'password',
+      database: process.env.DATABASE_NAME || 'sentryprime',
       entities: [Scan],
-      synchronize: true,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-      logging: process.env.NODE_ENV === 'development',
+      synchronize: process.env.NODE_ENV !== 'production',
     }),
-    HealthModule,
+    BullModule.forRoot({
+      redis: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT) || 6379,
+        password: process.env.REDIS_PASSWORD,
+      },
+    }),
     ScanModule,
-    AccessibilityModule,
     QueueModule,
   ],
-  controllers: [],
-  providers: [],
 })
-export class AppModule {
-  constructor() {
-    console.log('🔧 AppModule initialized with all services');
-    console.log('📊 Database URL configured:', !!process.env.DATABASE_URL);
-    console.log('🔗 Redis URL configured:', !!process.env.REDIS_URL);
-  }
-}
-
+export class AppModule {}

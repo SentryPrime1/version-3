@@ -3,10 +3,10 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { Scan } from '../entities/scan.entity';
 
-export interface ScanJobData {
-  scanId: string;
+interface ScanJobData {
+  scanId: number;
   url: string;
-  userId: number;
+  userId: string;
   options?: any;
 }
 
@@ -16,17 +16,11 @@ export class ScanQueueService {
 
   constructor(
     @InjectQueue('scan-queue')
-    private readonly scanQueue: Queue<ScanJobData>,
+    private scanQueue: Queue,
   ) {}
 
-  /**
-   * Add a scan job to the queue
-   * @param scan - The complete scan object containing all necessary data
-   */
   async addScanJob(scan: Scan): Promise<void> {
     try {
-      this.logger.log(`Adding scan job to queue for scan ID: ${scan.id}`);
-      
       const jobData: ScanJobData = {
         scanId: scan.id,
         url: scan.url,
@@ -40,115 +34,44 @@ export class ScanQueueService {
           type: 'exponential',
           delay: 2000,
         },
-        removeOnComplete: 10,
-        removeOnFail: 5,
       });
 
-      this.logger.log(`Scan job added to queue with job ID: ${job.id} for scan: ${scan.id}`);
+      this.logger.log(`Added scan job ${job.id} for scan ${scan.id}`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to add scan job to queue: ${errorMessage}`);
-      throw new Error(`Failed to add scan job to queue: ${errorMessage}`);
+      this.logger.error(`Failed to add scan job for scan ${scan.id}:`, error);
+      throw error;
     }
   }
 
-  /**
-   * Alternative method if you need to add a job with just the scan ID
-   * @param scanId - The scan ID
-   * @param url - The URL to scan
-   * @param userId - The user ID
-   * @param options - Optional scan options
-   */
-  async addScanJobById(scanId: string, url: string, userId: number, options?: any): Promise<void> {
-    try {
-      this.logger.log(`Adding scan job to queue for scan ID: ${scanId}`);
-      
-      const jobData: ScanJobData = {
-        scanId,
-        url,
-        userId,
-        options,
-      };
-
-      const job = await this.scanQueue.add('process-scan', jobData, {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        removeOnComplete: 10,
-        removeOnFail: 5,
-      });
-
-      this.logger.log(`Scan job added to queue with job ID: ${job.id} for scan: ${scanId}`);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to add scan job to queue: ${errorMessage}`);
-      throw new Error(`Failed to add scan job to queue: ${errorMessage}`);
+  async getJobStatus(jobId: string): Promise<any> {
+    const job = await this.scanQueue.getJob(jobId);
+    if (!job) {
+      return null;
     }
+
+    return {
+      id: job.id,
+      data: job.data,
+      progress: job.progress(),
+      state: await job.getState(),
+      createdAt: job.timestamp,
+      processedAt: job.processedOn,
+      finishedAt: job.finishedOn,
+      failedReason: job.failedReason,
+    };
   }
 
-  async getQueueStatus(): Promise<{ waiting: number; active: number; completed: number; failed: number }> {
-    try {
-      this.logger.log('Retrieving queue status');
-      
-      const [waiting, active, completed, failed] = await Promise.all([
-        this.scanQueue.getWaiting(),
-        this.scanQueue.getActive(),
-        this.scanQueue.getCompleted(),
-        this.scanQueue.getFailed(),
-      ]);
+  async getQueueStats(): Promise<any> {
+    const waiting = await this.scanQueue.getWaiting();
+    const active = await this.scanQueue.getActive();
+    const completed = await this.scanQueue.getCompleted();
+    const failed = await this.scanQueue.getFailed();
 
-      const status = {
-        waiting: waiting.length,
-        active: active.length,
-        completed: completed.length,
-        failed: failed.length,
-      };
-
-      this.logger.log(`Queue status: ${JSON.stringify(status)}`);
-      return status;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to retrieve queue status: ${errorMessage}`);
-      throw new Error(`Failed to retrieve queue status: ${errorMessage}`);
-    }
-  }
-
-  async pauseQueue(): Promise<void> {
-    try {
-      this.logger.log('Pausing scan queue');
-      await this.scanQueue.pause();
-      this.logger.log('Scan queue paused successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to pause queue: ${errorMessage}`);
-      throw new Error(`Failed to pause queue: ${errorMessage}`);
-    }
-  }
-
-  async resumeQueue(): Promise<void> {
-    try {
-      this.logger.log('Resuming scan queue');
-      await this.scanQueue.resume();
-      this.logger.log('Scan queue resumed successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to resume queue: ${errorMessage}`);
-      throw new Error(`Failed to resume queue: ${errorMessage}`);
-    }
-  }
-
-  async clearQueue(): Promise<void> {
-    try {
-      this.logger.log('Clearing scan queue');
-      await this.scanQueue.empty();
-      this.logger.log('Scan queue cleared successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to clear queue: ${errorMessage}`);
-      throw new Error(`Failed to clear queue: ${errorMessage}`);
-    }
+    return {
+      waiting: waiting.length,
+      active: active.length,
+      completed: completed.length,
+      failed: failed.length,
+    };
   }
 }
-

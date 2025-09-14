@@ -1,31 +1,32 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { ScanService } from './scan.service';
-import { CreateScanDto, ScanDto } from '../../../../packages/common/src/dtos/Scan.dto';
-import { Scan } from '../entities/scan.entity';
+import { ScanDto, CreateScanDto } from '../../../../packages/common/src/dtos/Scan.dto';
 
 @Controller('scans')
 export class ScanController {
   constructor(private readonly scanService: ScanService) {}
 
   @Post()
-  async createScan(@Body() scanDto: ScanDto): Promise<Scan> {
-    // Convert ScanDto to CreateScanDto with required userId
+  async createScan(@Body() scanDto: ScanDto) {
+    // Transform ScanDto to CreateScanDto by adding userId
+    // In a real app, you would get userId from authentication context (req.user.id)
     const createScanDto: CreateScanDto = {
       url: scanDto.url,
-      userId: scanDto.userId || 'default-user-id', // Provide default or get from auth context
       options: scanDto.options,
+      userId: 'default-user-id' // TODO: Get from authentication context
     };
-    
+
     return this.scanService.createScan(createScanDto);
   }
 
-  @Get()
-  async getScans(@Query('userId') userId: string): Promise<Scan[]> {
-    return this.scanService.getScansByUserId(userId);
+  @Get(':id')
+  async getScan(@Param('id') id: string) {
+    return this.scanService.findOne(id);
   }
 
-  @Get(':id')
-  async getScan(@Param('id') id: string): Promise<Scan> {
-    return this.scanService.getScanById(parseInt(id));
+  @Get()
+  async getAllScans() {
+    return this.scanService.findAll();
   }
 }
+

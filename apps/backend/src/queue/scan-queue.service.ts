@@ -1,46 +1,33 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { Scan } from '../entities/scan.entity';
 
 interface ScanJobData {
-  scanId: number;
+  scanId: string; // Changed from number to string to match scan.id type
   url: string;
-  userId: string;
   options?: any;
 }
 
 @Injectable()
 export class ScanQueueService {
-  private readonly logger = new Logger(ScanQueueService.name);
-
   constructor(
-    @InjectQueue('scan-queue')
-    private scanQueue: Queue,
+    @InjectQueue('scan-queue') private scanQueue: Queue,
   ) {}
 
-  async addScanJob(scan: Scan): Promise<void> {
-    try {
-      const jobData: ScanJobData = {
-        scanId: scan.id,
-        url: scan.url,
-        userId: scan.userId,
-        options: scan.options,
-      };
+  async addScanJob(scan: any): Promise<void> {
+    const jobData: ScanJobData = {
+      scanId: scan.id, // scan.id is string, now matches ScanJobData.scanId type
+      url: scan.url,
+      options: scan.options,
+    };
 
-      const job = await this.scanQueue.add('process-scan', jobData, {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-      });
-
-      this.logger.log(`Added scan job ${job.id} for scan ${scan.id}`);
-    } catch (error) {
-      this.logger.error(`Failed to add scan job for scan ${scan.id}:`, error);
-      throw error;
-    }
+    await this.scanQueue.add('process-scan', jobData, {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+    });
   }
 
   async getJobStatus(jobId: string): Promise<any> {
@@ -61,6 +48,13 @@ export class ScanQueueService {
     };
   }
 
+  async removeJob(jobId: string): Promise<void> {
+    const job = await this.scanQueue.getJob(jobId);
+    if (job) {
+      await job.remove();
+    }
+  }
+
   async getQueueStats(): Promise<any> {
     const waiting = await this.scanQueue.getWaiting();
     const active = await this.scanQueue.getActive();
@@ -72,6 +66,8 @@ export class ScanQueueService {
       active: active.length,
       completed: completed.length,
       failed: failed.length,
+      total: waiting.length + active.length + completed.length + failed.length,
     };
   }
 }
+
